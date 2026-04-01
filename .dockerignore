@@ -1,0 +1,8 @@
+.env
+.venv
+__pycache__/
+*.pyc
+build/
+tests/__pycache__/
+nstg_ai/__pycache__/
+nigeria-clinical-guidelines-dataset-main/raw data/

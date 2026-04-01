@@ -1,0 +1,567 @@
+# NSTG Medical AI Assistant - Frontline Care Product Plan
+
+## Product Vision
+
+Build a proper "Where There Is No Doctor" clinical workflow engine for frontline care in Nigeria.
+
+Primary users:
+- Chemists and pharmacy counter staff
+- Patent and Proprietary Medicine Vendors (PPMVs)
+- Community health workers (CHWs)
+- Nurses and junior clinic staff
+- Referral-minded operators with partial clinical training
+
+This is not a public chatbot. It is a decision-support and referral-support system for semi-clinical users working where physician access is limited.
+
+Core job to be done:
+- Turn messy patient descriptions into a structured clinical picture
+- Ground every response in NSTG / Where There Is No Doctor evidence
+- Help the operator know what to ask next, what red flags matter, what can be handled locally, and when to refer
+- Always answer: **can I treat here, or do I refer now?**
+- Return answers through chat (Telegram, WhatsApp), web, and structured API
+
+Runtime design note:
+- The active Phase 7 target is a pure 70B runtime with aggressive escalation.
+- No deterministic triage gate, no regex emergency pass, and no intermediate 8B model in the target runtime.
+
+---
+
+## Runtime Pipeline
+
+Every frontline query runs through one unified clinical pass.
+
+```
+Query
+  -> Load session memory and recent case context
+  -> Assemble relevant NSTG evidence for the case
+  -> 70B unified call:
+      {
+        triage_disposition,
+        danger_signs_detected,
+        interpreted_facts,
+        candidate_conditions,
+        reasoning,
+        answer,
+        treat_here,
+        refer_urgency,
+        what_to_do_now,
+        immediate_actions,
+        ask_or_check
+      }
+  -> 70B aggressively escalates on any uncertainty about danger signs
+  -> Every response includes what_to_do_now
+  -> Save session + audit, return structured response
+```
+
+Runtime rules:
+- No deterministic triage gate.
+- No regex emergency pass.
+- No intermediate 8B interpretation or classification call.
+- One grounded 70B call owns triage, interpretation, reasoning, and frontline action planning.
+- Over-referral is acceptable. Missing a danger sign is not.
+
+---
+
+## Protocol Rules
+
+Protocols remain part of the NSTG grounding context, but they are no longer a separate runtime gate. The unified 70B pass should reason from them directly and still bias toward escalation when the presentation is dangerous or uncertain.
+
+
+**Three possible outputs from any protocol:**
+- `treat_here: true` - clear criteria met, safe to manage locally with available drugs
+- `treat_here: false, refer_urgency: immediate` - clear danger signs present or uncertainty is too high to manage locally
+- `ask_or_check: "..."` - ask one question or perform one bedside check; do not guess
+
+### Malaria
+| Criteria | Decision |
+|---|---|
+| No danger signs + can drink + no prostration | Treat here - ACTs |
+| Any danger sign (convulsion, cannot drink, unconscious, severe weakness, fast breathing) | Refer now - immediate |
+| Prostration or severe anaemia without danger signs | Refer soon |
+| Missing: can the child drink? Is there prostration? | Ask: "Can the child drink? Are they too weak to sit up?" |
+
+### Dehydration
+| Criteria | Decision |
+|---|---|
+| No signs of dehydration (active, normal eyes, drinks normally) | No dehydration - continue feeding |
+| Some dehydration (restless, sunken eyes, drinks eagerly) | Treat here - ORS Plan B |
+| Severe dehydration (lethargic, sunken eyes, unable to drink, skin turgor) | Refer now - IV fluids needed |
+| Missing: can the child drink? Eye appearance? | Ask: "Can the child drink? Are the eyes sunken?" |
+
+### Pneumonia / Respiratory Distress
+| Criteria (by age) | Decision |
+|---|---|
+| Fast breathing only, no chest indrawing, can drink | Treat here - Amoxicillin |
+| Chest indrawing present | Refer now - severe pneumonia |
+| Cyanosis or unable to drink | Refer now - immediate |
+| SpO2 < 90% if measurable | Refer now - oxygen needed |
+| Missing: respiratory rate? Chest indrawing? | Ask: "Count the breaths in one minute. Is the chest pulling in?" |
+
+Fast breathing thresholds (NSTG):
+- < 2 months: >= 60 breaths/min
+- 2-12 months: >= 50 breaths/min
+- 1-5 years: >= 40 breaths/min
+
+### Anaemia / Transfusion
+| Criteria | Decision |
+|---|---|
+| Hb >= 7 g/dL, no severe features | Treat here - investigate cause, treat underlying |
+| Hb < 7 g/dL with clinical severity signs | Refer soon |
+| Hb < 5 g/dL or severe distress or heart failure signs | Refer now - transfusion gating |
+| Missing: Hb or clinical severity signs | Ask: "Do you have an Hb result? Is the child in severe distress or breathing very fast?" |
+
+### Convulsion / Altered Consciousness
+| Criteria | Decision |
+|---|---|
+| Active convulsion | Refer now - immediate. Give rectal diazepam if available while arranging transport |
+| Post-ictal but responsive | Refer now - urgent |
+| Altered consciousness / unresponsive | Refer now - immediate |
+
+### Sepsis / Severe Infection
+| Criteria | Decision |
+|---|---|
+| Fever + any danger sign in child < 5 years | Refer now - give first dose IM/IV antibiotic if available |
+| Fever + unable to feed in neonate | Refer now - immediate |
+| Fever alone, active, drinking, no danger signs | Treat here - investigate cause |
+
+---
+
+## Clinical Assessment Guide - How to Check
+
+Every time the protocol asks for a physical finding, it must also tell the operator how to assess it. This is a code table - no model needed. Paired with every `ask_or_check` prompt that requires examination.
+
+### Respiratory Rate
+> Count how many times the chest rises in **60 seconds** while the child is calm and not crying. Use a watch or count on your fingers. Do not count if the child is upset - wait until they settle.
+
+Thresholds:
+- Under 2 months: fast if >= 60/min
+- 2-12 months: fast if >= 50/min
+- 1-5 years: fast if >= 40/min
+
+### Chest Indrawing
+> Watch the **lower chest wall** while the child breathes in. Does it pull inward? That is chest indrawing. The whole lower chest should move inward - not just the skin between the ribs.
+
+### Pulse (Heart Rate)
+> Place two fingers on the **inside of the wrist** just below the thumb, or on the **neck beside the windpipe**. Count beats for 30 seconds and multiply by 2.
+
+Normal ranges:
+- Neonate: 120-160/min
+- Infant (1-12 months): 100-160/min
+- Child (1-5 years): 80-120/min
+- Adult: 60-100/min
+
+**Weak or rapid pulse** (> 120 in a child, > 100 in an adult) with fever or pallor is a danger sign.
+
+### Temperature
+> If you have a thermometer: fever is >= 37.5C axillary (armpit) or >= 38C rectal.
+> If no thermometer: feel the **abdomen or back** with the back of your hand. Hot to the touch compared to your own skin means fever is likely.
+
+### Consciousness - AVPU Scale
+> Use these four levels in order:
+> - **A - Alert**: child is awake, responds normally, makes eye contact
+> - **V - Voice**: child only responds when you speak loudly or call their name
+> - **P - Pain**: child only responds when you press firmly on the sternum (breastbone)
+> - **U - Unresponsive**: no response to voice or pain
+
+Any level below A (voice, pain, or unresponsive) is a danger sign - refer now.
+
+### Ability to Drink / Feed
+> Offer water, ORS, or breast milk directly. Can the child swallow? Does the child accept it?
+> - **Cannot drink**: refuses all fluids or vomits everything immediately -> danger sign
+> - **Drinks poorly**: accepts but weakly -> watch closely
+> - **Drinks eagerly**: may indicate dehydration
+
+### Skin Turgor (Dehydration)
+> Pinch the skin on the **abdomen** between two fingers for 1 second, then release.
+> - Returns **immediately**: normal hydration
+> - Returns **slowly (stays tented for 1-2 seconds)**: some dehydration
+> - Returns **very slowly (> 2 seconds)**: severe dehydration -> refer now
+
+### Eyes - Sunken
+> Look directly at the child's eyes from the front.
+> Are they deeper in the socket than normal? Ask the mother: "Do the eyes look different from usual?"
+> Sunken eyes + reduced tears = dehydration sign.
+
+### Pallor (Anaemia)
+> Look at:
+> - The inside of the **lower eyelid** (pull down gently) - should be pink/red, not white/pale
+> - The **palms** - should have pink creases
+> - The **lips and tongue** - should be pink
+
+**Severe pallor** (very pale eyelid lining, pale palms, pale lips) = possible severe anaemia -> refer.
+
+### MUAC (Malnutrition)
+> Measure the **mid-upper arm circumference** with a MUAC tape on the left arm, midway between shoulder and elbow, arm relaxed.
+> - >= 12.5 cm (green): normal
+> - 11.5-12.5 cm (yellow): moderate acute malnutrition - monitor and treat
+> - < 11.5 cm (red): severe acute malnutrition -> refer
+
+### Prostration (Severe Weakness)
+> Can the child **sit up unaided**? Can they stand if old enough?
+> A child who cannot sit up without support, is floppy, or cannot be woken fully has prostration -> danger sign for severe malaria or sepsis.
+
+### Fontanelle (Infants < 18 months)
+> Feel the **soft spot on top of the head** (anterior fontanelle) when the child is upright and calm.
+> - **Sunken**: dehydration
+> - **Bulging**: raised intracranial pressure -> refer now
+
+### Jaundice
+> Look at the **whites of the eyes** and the **skin** in good light.
+> Yellow colour in the eyes or skin = jaundice. In a newborn, jaundice on the **abdomen or below** is significant -> refer.
+
+### Oedema
+> Press your thumb firmly on the **top of the foot or the shin** for 3 seconds.
+> Does a dent (pit) remain after you lift your finger?
+> Bilateral pitting oedema in a child = kwashiorkor -> refer.
+
+---
+
+## LLM Call Budget
+
+| Query type | LLM calls | Models |
+|---|---|---|
+| Any frontline query in normal runtime | 1 | 70B unified clinical pass |
+| Provider outage / hard failure | 0 successful calls | explicit service-unavailable response until multi-provider fallback exists |
+
+The runtime assumption is simple: no regex triage, no 8B pre-pass, no gate chain. One grounded 70B call does the work.
+
+---
+
+## Output Schema
+
+Every response includes these fields - structured, not buried in prose:
+
+```typescript
+{
+  answer: string;                          // formatted frontline response
+  disposition: "ANSWER" | "ASK_CLARIFY" | "INSUFFICIENT_EVIDENCE" | "EMERGENCY_ESCALATE";
+  treat_here: boolean | null;              // null only when not yet determinable
+  refer_urgency: "immediate" | "soon" | "routine" | null;
+  what_to_do_now: string | null;           // always present on actionable answers, including escalations
+  ask_or_check: string | null;             // one targeted question or bedside check
+  immediate_actions: string[] | null;      // ordered actions to start immediately
+  patient_snapshot: {
+    age_years: number | null;
+    weight_kg: number | null;
+    symptoms: string[];
+    candidate_conditions: string[];
+    active_condition: string | null;
+    active_task: string | null;
+  };
+  dosage: DosageResult | null;
+  citations: Citation[];
+  answer_source: "llm_unified" | "service_unavailable";
+  warnings: string[];
+}
+```
+
+---
+
+## Phase 1 - Foundation and Memory [COMPLETE] KEEP AS-IS
+
+- [x] `session_memory` table live
+- [x] Session loaded on every request
+- [x] Session saved on every major response path
+- [x] Facts merged across turns
+- [x] 4-hour expiry enforced
+- [x] Patient context persists across turns: `age`, `weight`, `symptoms`, `candidate_conditions`, `last_clarification`, `patient_age_group`, `speaker_role`
+- [x] Clarification loops bounded (`MAX_CLARIFICATION_TURNS = 2`)
+- [x] Follow-up turns attach to prior context instead of restarting cold
+- [x] `active_condition` and `active_task` in session memory (baseline)
+
+Assessment:
+- Keep this phase.
+- It is good enough for the new architecture and should be preserved, not rebuilt.
+
+---
+
+## Phase 2 - Intelligence Core [KEEP] KEEP COMPONENTS, REFACTOR FLOW
+
+- [x] Structured interpretation (light model, step 4)
+- [x] Per-candidate retrieval (step 11)
+- [x] Clinical reasoning (large model, step 13)
+- [x] Deterministic triage gate pass 1 (step 3)
+- [x] Deterministic dosage engine (`dosage.ts`)
+- [x] Anti-hallucination constraints in prompts
+- [x] Safe clarification and insufficient-evidence exits
+
+Verified live:
+- [x] Emergency inputs escalate correctly
+- [x] Dose queries handled deterministically when weight is known
+- [x] Follow-up queries reuse session state
+
+Assessment:
+- Keep the building blocks from this phase.
+- Do not keep the current orchestration as the final architecture.
+- Retrieval, dosage, interpretation, and emergency handling stay.
+- The intelligence flow needs to be re-wired so the LLM is used later and less often.
+
+---
+
+## Phase 3 - Safety Pipeline [KEEP] REBUILD AROUND THE NEW PIPELINE
+
+- [x] Task classification (step 8 - LLM fallback path)
+- [x] Section-aware retrieval (step 11)
+- [x] Answerability gate (step 10)
+- [x] Fact plausibility checks
+- [x] Response validator (step 14)
+- [x] High-risk protocol engine - baseline form (step 9)
+- [x] Timeout and safe fallback handling (step 13 error path)
+- [x] Audit trace captures failures and gate decisions (step 16)
+
+Known gaps still open:
+- [ ] Task routing still misfires on symptom-led queries (step 8 keyword priors not built)
+- [ ] Large-model call still used for cases the protocol engine should handle
+- [ ] Syndrome map (step 7) not yet built
+- [ ] Second triage pass on merged facts (step 6) not yet built
+- [ ] `treat_here` and `refer_urgency` not yet first-class output fields
+
+Assessment:
+- Keep the safety primitives from this phase.
+- Rebuild the orchestration around them.
+- This phase is not the final frontline-care architecture yet.
+- The new target is a unified 70B clinical pass with aggressive escalation and structured frontline outputs.
+
+---
+
+## Phase 4 - Pipeline Rebuild [COMPLETE]
+
+Goal: rewire `service.ts` to the full 16-step pipeline. Keep existing functions, change the orchestration.
+
+### 4.1 Steps
+- [x] Step 6: second triage pass on merged patient picture - `assessTriage` called on merged facts (`service.ts:604`, `service.ts:1128`)
+- [x] Step 7: syndrome map - `SYNDROME_PATTERNS` code table, 10 entries (`service.ts:134`)
+- [x] Step 8: deterministic task resolver - `inferTaskFromQueryText` keyword priors first, LLM classify only as fallback (`service.ts:285`, `service.ts:300`)
+- [x] Step 9: protocol engine - malaria, dehydration, pneumonia, anaemia, convulsion, sepsis rules live
+- [x] Step 15: structured frontline answer format enforced via `enrichFrontlineResponse` in `index.ts`
+- [x] Step 16: `answer_source` recorded on every response path (`service.ts:465`)
+
+### 4.2 Output schema
+- [x] `treat_here`, `refer_urgency`, `what_to_do_now`, `ask_or_check`, `immediate_actions`, `answer_source` in `QueryResponse` (`types.ts`)
+- [x] Populated on every response path
+- [x] `treat_here` is a first-class field, not buried in prose
+
+### 4.3 Frontline user reframing
+- [x] Chat.tsx: removed community conditionals, header and placeholder are frontline-worker language
+- [x] clinical.tsx: eyebrow `nodoctor.ng`, title `Frontline health worker support.`, names chemists/PPMVs/CHWs/nurses
+- [x] Code comments and docs updated to frontline care worker language
+
+Exit criteria met:
+- [x] Historical milestone: most queries resolved before large-model reasoning in the earlier pipeline
+- [x] `treat_here` and `refer_urgency` present on every response
+- [x] Syndrome-first queries resolve correctly without a disease name
+
+Assessment:
+- Phase 4 pipeline rebuild is complete.
+- Move to Phase 5 for syndrome map expansion, drug availability guardrails, and `ASSESSMENT_GUIDE` code table.
+
+---
+
+## Phase 5 - Frontline Workflow Engine [COMPLETE]
+
+Goal: the engine handles the real questions frontline operators ask.
+
+- [x] Keyword priors in step 8 cover frontline language: "what should I give" -> treatment, "can I treat here" / "should I refer" -> referral, "does this need oxygen/transfusion" -> severity
+- [x] Syndrome map expanded to 30 clusters covering: respiratory, malaria (severe + uncomplicated), diarrhoea/dehydration/cholera, typhoid, meningitis, sepsis, neonatal sepsis, measles, URTI, severe/moderate acute malnutrition, anaemia, febrile convulsion, epilepsy, altered consciousness, neonatal jaundice, wound infection, UTI, hypertension, diabetes, snakebite, malaria with severe anaemia
+- [x] Drug availability guardrails: `PPMV_AVAILABLE_DRUGS` and `HOSPITAL_ONLY_DRUGS` code tables in `service.ts`; `flagHospitalOnlyDrugs()` auto-annotates answers via `enrichFrontlineResponse`
+- [x] `ask_or_check` is first-class: protocol clarification paths ask one targeted question or bedside check instead of falling back to generic clarification
+- [x] Protocol engine never defaults to "refer" blindly - always asks one targeted question with `how_to_check` when key data is missing
+
+### Clinical assessment guidance (how_to_check) [COMPLETE]
+- [x] `ASSESSMENT_GUIDE` code table built in `service.ts` - 15 entries
+- [x] Each entry: `{ finding, how_to_check, normal_range?, danger_threshold? }`
+- [x] `how_to_check` attached inline to every protocol ASK_CLARIFY path requiring a physical examination
+- [x] Covers: respiratory rate, chest indrawing, pulse, temperature, consciousness (AVPU), ability to drink/feed, skin turgor, sunken eyes, pallor, MUAC, prostration, fontanelle, jaundice, oedema, SpO2
+- [x] Age-specific thresholds included (respiratory rate, pulse, MUAC)
+- [x] Telegram: `how_to_check` included inline in the clarification message
+
+Remaining for Phase 6:
+- [ ] Retrieval re-ranking for syndrome-only queries (no named disease)
+- [ ] Web/app: expandable "How do I check this?" UI component
+
+Exit criteria met:
+- [x] Symptom-first frontline queries route correctly to treatment or referral sections
+- [x] Engine never refers blindly - treats, refers with reason, or asks one precise question
+- [x] Every examination request includes a plain-language how-to for the operator
+
+Assessment:
+- Phase 5 complete. Move to Phase 6 for structured output enforcement and API schema versioning.
+
+---
+
+## Phase 6 - Structured Output and API [COMPLETE]
+
+### 6.1 Frontline answer format
+Enforced output structure for every non-emergency response:
+```
+Likely problem: [condition]
+Treat here: Yes / No - refer now
+What to do now: [numbered steps]
+Ask or check: [one missing datapoint if any]
+Refer if: [red flags]
+Dose: [if supported by NSTG evidence]
+Source: [NSTG citation]
+```
+Emergency format:
+```
+EMERGENCY - [danger sign]
+What to do now: [immediate steps]
+Go to: [nearest facility type]
+Show this to the nurse: [brief symptom summary]
+While travelling: [what to do en route]
+```
+
+- [x] `formatFrontlineAnswer()` in `service.ts` - assembles all 7 fields from `ClinicalDecision` structured output
+- [x] `formatEmergencyGuidance()` updated to canonical emergency format with all 5 sections
+- [x] `reasonWithGemini` prompt updated to output `what_to_do_now`, `ask_or_check`, `refer_if`, `dose_line`, `treat_here` as JSON fields
+- [x] `ClinicalDecision` type extended with structured frontline fields
+- [x] Red flags (`refer_if`) always appear before Source in the formatted answer
+- [x] Telegram `truncateForTelegram()` - smart truncation drops Source first, then Dose, preserves emergency/treat_here/what_to_do_now/refer_if
+
+### 6.2 API response schema
+- [x] All structured fields (`treat_here`, `refer_urgency`, `what_to_do_now`, `ask_or_check`, `immediate_actions`, `answer_source`) present on every response
+- [x] Chat answer and API payload tell the same story - `formatFrontlineAnswer` produces both
+- [x] `QueryResponse` schema documented in Output Schema section above
+
+## Phase 7 - Pure 70B, Aggressive Escalation
+
+
+Goal: simplify the runtime so one grounded 70B pass owns triage, interpretation, reasoning, and frontline action planning.
+
+- [ ] Remove deterministic triage from the target runtime design
+- [ ] Remove intermediate 8B interpretation / classification calls from the target runtime design
+- [ ] Run one unified 70B call on every frontline query
+- [ ] Unified 70B output returns:
+      `triage_disposition`, `danger_signs_detected`, `interpreted_facts`,
+      `candidate_conditions`, `reasoning`, `answer`, `treat_here`,
+      `refer_urgency`, `what_to_do_now`, `immediate_actions`, `ask_or_check`
+- [ ] Prompt bias is explicit: if there is any doubt about danger signs, escalate immediately
+- [ ] `what_to_do_now` is always present, including on escalations
+- [ ] Track runtime failures: `429`, timeout, empty response, provider outage
+- [ ] Return explicit service-unavailable guidance on provider failure until multi-provider fallback is added
+- [ ] Add multi-provider fallback later (Gemini, Claude, or equivalent), not in the first cut
+- [ ] Test under repeated realistic frontline traffic patterns
+
+Exit criteria:
+- [ ] Every frontline query is handled by the unified 70B path in normal runtime
+- [ ] Over-referral is preferred to missed danger signs
+- [ ] Frontline workflows remain usable even when the model escalates aggressively
+- [ ] Failure modes are explicit and safe when the provider is unavailable
+
+Assessment:
+- Phase 6 output structure remains the contract for the unified runtime.
+- Phase 7 is now the pure 70B runtime build.
+
+---
+
+## Phase 8 - Audit, Review, and Clinical Governance 
+
+- [ ] `AuditTrace` extended with full patient snapshot fields
+- [ ] `answer_source` recorded on every interaction: llm_unified / service_unavailable
+- [ ] Record why emergency or referral fired (which rule, which danger sign)
+- [ ] Surface high-risk and insufficient-evidence cases in review queue
+- [ ] Reviewer feedback loop for unsafe, unclear, or incomplete answers
+- [ ] Failure taxonomy: wrong task / wrong section / insufficient evidence / missed emergency / unsupported dose / unclear clarification
+- [ ] Prompt and model version tracked per release
+
+Assessment:
+- This phase is still valid.
+- It becomes more useful once the new pipeline records which unified model output and evidence set drove each decision.
+
+---
+
+## Phase 9 - Evaluation Harness 
+
+### 9.1 Live regression pack (run after every major change)
+- [ ] `child with fever and fast breathing` -> emergency / urgent referral
+- [ ] `child with diarrhoea but no blood` -> no false emergency, dehydration workflow
+- [ ] `this malaria child is weak and cannot drink` -> severe malaria, refer now
+- [ ] `does this child need transfusion` -> asks for Hb when missing
+- [ ] `should I start oxygen` -> asks for SpO2 / chest indrawing when missing
+- [ ] `what should I give for pneumonia` -> treatment section, not investigations
+- [ ] repeated dose query -> same answer every time, matches dosage payload
+- [ ] follow-up `weight is 11 kg` -> attaches to earlier case, does not restart
+- [ ] `pikin dey shake` -> EMERGENCY_ESCALATE (convulsion)
+- [ ] `cannot drink cold water` -> no false emergency
+
+### 9.2 Frontline phrasing pack
+- [ ] Pidgin inputs resolve correctly
+- [ ] Weak English / mixed shorthand inputs resolve correctly
+- [ ] Operator language from chemists and PPMVs ("what to give", "can I manage this")
+- [ ] Incomplete symptom descriptions -> one targeted question, not a generic fallback
+
+### 9.3 Test targets
+- [ ] 50 common frontline case tests
+- [ ] 20 emergency recall tests - 100% target
+- [ ] 20 multi-turn follow-up tests
+- [ ] 15 protocol-specific deterministic tests per major workflow
+- [ ] 15 retrieval-targeting tests
+- [ ] 10 API schema consistency tests
+- [ ] All tests run on live Supabase Edge / Groq path
+
+Assessment:
+- This phase is still valid.
+- The test set should be dominated by messy frontline phrasing and protocol workflows, not only clean clinician prompts.
+
+---
+
+## Phase 10 - Channel and Deployment 
+
+### 10.1 Telegram
+- [ ] Frontline bot live and production-quality on the unified 70B runtime pipeline
+- [ ] Frontline bot token wired to dedicated webhook
+- [ ] Rename `TELEGRAM_BOT_TOKEN_CLINICAL` later if needed so infra matches the product language
+- [ ] Both bots use same engine - routing by bot identity, not prefix commands
+- [ ] Structured answer format enforced; response <= 1000 chars
+- [ ] Red flags and `treat_here` preserved under truncation
+
+### 10.2 WhatsApp
+- [ ] WhatsApp channel wired to the same unified 70B runtime pipeline
+- [ ] Session memory and multi-turn handling work on WhatsApp
+- [ ] Default route is frontline care support - not a community chatbot
+- [ ] Frontline access via dedicated number or verified registration
+- [ ] Interactive buttons used to reduce typing burden
+- [ ] Tested on low-bandwidth and intermittent connections
+- [ ] Pidgin and mixed-language inputs handled
+
+### 10.3 Web and app
+- [ ] Web interface exposes structured output: `treat_here`, `refer_urgency`, `what_to_do_now`, `ask_or_check`, citations
+- [ ] Case history and session log visible to the operator
+- [ ] Ministry of Health dashboard: aggregate case patterns, emergency rates, referral rates
+- [ ] Mobile-first, low-end Android on 3G
+- [ ] Offline-capable: static protocol cards as fallback when network unavailable
+
+### 10.4 Voice
+- [ ] Runtime target: same unified 70B pass, same audit behavior as chat
+- [ ] Voice transcription feeds into the same unified 70B runtime pipeline
+- [ ] Transcribed voice treated as a standard query - same unified 70B pass, same audit
+- [ ] Output available as text and generated audio
+
+### 10.5 API
+- [ ] Versioned and stable for partner consumption
+- [ ] Response contract documented and published
+- [ ] Community/public surfaces (if any) remain tightly constrained and referral-safe - no open-ended unsupported advice
+
+Assessment:
+- This phase is still valid.
+- Only the wording needed cleanup so deployment channels reflect frontline care, not doctor-only usage.
+
+---
+
+## Definition of Done
+
+- [ ] A chemist, PPMV, CHW, or nurse can use the product to know what to ask, what to check, what to do, and when to refer
+- [ ] `treat_here` and `refer_urgency` present on every response - never buried in prose
+- [ ] Symptom-first queries ("fever and fast breathing", "child not eating and weak") resolve to the right condition and section
+- [ ] Emergency recall is 100% on the release test set
+- [ ] No dose or treatment instruction without grounded NSTG evidence
+- [ ] High-risk workflows (malaria, dehydration, pneumonia, anaemia, sepsis, convulsion) are protocol-backed
+- [ ] Every frontline query runs through the unified 70B clinical pass with aggressive escalation on uncertainty
+
+- [ ] The bot never refers blindly - it refers with a reason or asks one precise question
+- [ ] Structured API outputs reliable enough for partner integrations
+- [ ] Telegram and WhatsApp both live on the full pipeline with tested safety behavior
+- [ ] Web/app interface usable on low-end Android on 3G
+- [ ] Runtime failures degrade safely - user always gets a response
+- [ ] Audit trace records what stage made every decision
+- [ ] Improvements are driven by reviewed real cases, not guesswork

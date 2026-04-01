@@ -1,0 +1,51 @@
+{
+  "document_id": "nstg-2022-sample",
+  "title": "National Standard Treatment Guidelines 2022",
+  "version": "2022",
+  "country": "Nigeria",
+  "source_file": "NSTG_2022_sample.pdf",
+  "chapters": [
+    {
+      "node_id": "chapter-malaria",
+      "title": "Malaria",
+      "page": 140,
+      "metadata": {
+        "condition": "Malaria",
+        "tags": ["infectious disease"]
+      },
+      "children": [
+        {
+          "node_id": "section-uncomplicated-malaria",
+          "title": "Uncomplicated Malaria",
+          "page": 141,
+          "metadata": {
+            "severity": "Uncomplicated"
+          },
+          "children": [
+            {
+              "node_id": "subsection-pediatric-treatment",
+              "title": "Pediatric Treatment",
+              "page": 142,
+              "body": "For children with uncomplicated malaria, confirm weight, review contraindications, and prescribe according to the approved antimalarial dosing table.",
+              "metadata": {
+                "demographic": "Pediatric",
+                "contraindications": ["First trimester"],
+                "tags": ["treatment", "dosage"]
+              }
+            },
+            {
+              "node_id": "subsection-danger-signs",
+              "title": "Danger Signs",
+              "page": 143,
+              "body": "Urgent referral is required for convulsion, unconsciousness, inability to drink, respiratory distress, or persistent vomiting.",
+              "metadata": {
+                "tags": ["triage", "danger signs"]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

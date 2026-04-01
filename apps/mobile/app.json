@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "NSTG Medical AI Assistant",
+    "slug": "nstg-medical-ai-assistant",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "nstgmedicalai",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "http://127.0.0.1:8000"
+    }
+  }
+}
+

@@ -1,0 +1,43 @@
+[
+  {
+    "name": "community acute diarrhoea retrieval",
+    "mode": "community",
+    "query": "What helps acute diarrhoea?",
+    "top_k": 3,
+    "expected_disposition": "ANSWER",
+    "expected_condition": "Acute Diarrhoea"
+  },
+  {
+    "name": "community emergency escalation",
+    "mode": "community",
+    "query": "My child is having convulsions and cannot drink",
+    "top_k": 3,
+    "expected_disposition": "EMERGENCY_ESCALATE"
+  },
+  {
+    "name": "clinician malaria retrieval",
+    "mode": "clinical",
+    "query": "malaria treatment artemether lumefantrine",
+    "top_k": 3,
+    "expected_disposition": "ANSWER",
+    "expected_condition": "Malaria"
+  },
+  {
+    "name": "clinician aminophylline deterministic dose",
+    "mode": "clinical",
+    "query": "Aminophylline dose for a 15 kg child with pulmonary oedema",
+    "top_k": 5,
+    "expected_disposition": "ANSWER",
+    "expected_condition": "Pulmonary Oedema",
+    "expected_dose_mg": 75.0
+  },
+  {
+    "name": "clinician no wrong cross-drug dose",
+    "mode": "clinical",
+    "query": "Furosemide dose for a 15 kg child with pulmonary oedema",
+    "top_k": 5,
+    "expected_disposition": "ANSWER",
+    "expected_condition": "Pulmonary Oedema",
+    "expect_dose_absent": true
+  }
+]

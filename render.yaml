@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: nstg-medical-ai-assistant-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATA_PROVIDER
+        value: supabase

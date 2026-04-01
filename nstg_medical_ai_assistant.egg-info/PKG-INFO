@@ -1,0 +1,211 @@
+Metadata-Version: 2.4
+Name: nstg-medical-ai-assistant
+Version: 0.1.0
+Summary: Phase 1 ingestion and hierarchical chunking pipeline for the NSTG Medical AI Assistant.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi<1.0,>=0.110
+Requires-Dist: httpx<1.0,>=0.27
+Requires-Dist: pydantic<3.0,>=2.0
+Requires-Dist: python-dotenv<2.0,>=1.0
+Requires-Dist: uvicorn<1.0,>=0.29
+
+# NSTG Medical AI Assistant
+
+This repository now contains the Phase 1 foundation for the NSTG Medical AI Assistant:
+
+- strict Pydantic schemas for structured NSTG JSON
+- strict Pydantic schemas for the real `processed_json` condition dataset
+- hierarchical chunk generation with citation-preserving metadata
+- a CLI that validates source data and writes chunked JSONL output
+- a sample dataset and a basic test suite
+
+## Current scope
+
+This first pass begins at the structured JSON stage of the pipeline. PDF parsing is intentionally left out for now because no source NSTG PDF or parser rules are in the repository yet.
+
+## Project layout
+
+```text
+nstg_ai/
+  cli.py
+  models.py
+  pipeline.py
+sample_data/
+  nstg_sample.json
+tests/
+  test_pipeline.py
+```
+
+## Run the Phase 1 pipeline
+
+From the repository root:
+
+```powershell
+python -m nstg_ai.cli build-chunks --input sample_data/nstg_sample.json --output build/nstg_chunks.jsonl
+```
+
+That command will:
+
+1. load the structured JSON file
+2. validate it against strict models
+3. generate hierarchical chunks with lineage metadata
+4. write a JSONL file ready for embedding or later indexing
+
+## Run the real dataset pipeline
+
+If you have the processed condition dataset in:
+
+`nigeria-clinical-guidelines-dataset-main/processed_json`
+
+run:
+
+```powershell
+python -m nstg_ai.cli build-dataset-chunks --input-dir nigeria-clinical-guidelines-dataset-main/processed_json --output build/nstg_dataset_chunks.jsonl
+```
+
+That command validates every condition JSON file and emits section-level chunks for:
+
+- introduction
+- typed clinical features
+- investigations
+- treatment subsections
+- differential diagnoses
+- complications
+- prevention
+- prognosis and other optional sections when present
+
+## Run tests
+
+```powershell
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+## Run the API
+
+Start the local FastAPI server from the repository root:
+
+```powershell
+uvicorn nstg_ai.api:app --reload
+```
+
+Available endpoints:
+
+- `GET /`
+- `GET /health`
+- `POST /api/community/query`
+- `POST /api/clinical/query`
+- `POST /api/community/voice-jobs`
+- `POST /api/jobs/{job_id}/process`
+- `GET /api/jobs/{job_id}`
+- `POST /api/feedback`
+- `POST /webhook/twilio/whatsapp`
+- `POST /webhook/telegram`
+
+The current API is a local MVP layer. It uses lexical retrieval over the generated NSTG chunks, a rules-based triage gate, deterministic dosage extraction where an explicit `mg/kg` formula is present in retrieved text, and an explicit queued job flow for voice-style requests.
+
+API interactions and feedback are written to JSONL audit files under `build/audit/`.
+
+## Supabase runtime
+
+The repository now includes a Supabase-hosted runtime path:
+
+- SQL migrations in [migrations](/c:/Dev/Where_there_is_no_doctor/supabase/migrations)
+- an Edge Function API router in [index.ts](/c:/Dev/Where_there_is_no_doctor/supabase/functions/api/index.ts)
+- shared TypeScript logic in [functions/_shared](/c:/Dev/Where_there_is_no_doctor/supabase/functions/_shared)
+- a chunk importer in [import_chunks_to_supabase.mjs](/c:/Dev/Where_there_is_no_doctor/scripts/import_chunks_to_supabase.mjs)
+- Edge Function config in [config.toml](/c:/Dev/Where_there_is_no_doctor/supabase/config.toml)
+
+The full Supabase-only deployment walkthrough lives in [supabase-first deployment.md](/c:/Dev/Where_there_is_no_doctor/docs/supabase-first%20deployment.md).
+
+## Public Telegram deployment
+
+For the Supabase Edge deployment, the Telegram webhook should point to:
+
+`https://<project-ref>.supabase.co/functions/v1/api/webhook/telegram`
+
+You will need:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_SECRET`
+- deployed Supabase Edge Function `api`
+
+The local Python CLI helper is still available if you want it, but the Supabase runtime path is now the primary production target.
+
+And remove it with:
+
+```powershell
+python -m nstg_ai.cli telegram-webhook --action delete
+```
+
+If you prefer not to store the URL in `.env`, pass it directly:
+
+```powershell
+python -m nstg_ai.cli telegram-webhook --action set --base-url https://api.yourdomain.com
+```
+
+## Mobile app scaffold
+
+The Expo + React Native mobile shell now lives in `apps/mobile`.
+
+Included screens:
+
+- home / mode select
+- community bot
+- clinical bot
+- async jobs
+- settings
+
+When you are ready to install dependencies and run it:
+
+```powershell
+cd apps/mobile
+npm install
+npm run start
+```
+
+The mobile app currently targets the backend URL defined in `apps/mobile/app.json` under `expo.extra.apiBaseUrl`.
+
+## Run the evaluation harness
+
+```powershell
+python -m nstg_ai.cli evaluate --cases sample_data/phase3_eval_cases.json --output build/phase3_eval_report.json
+```
+
+The evaluation harness currently checks:
+
+- disposition accuracy for triage and answer/refuse behavior
+- top-condition retrieval hit rate for curated queries
+- deterministic dosage correctness for curated clinician cases
+
+## Run the Phase 1 dataset audit
+
+If you do not have the original NSTG PDF, you can still complete the current Phase 1 data-quality pass using the structured dataset in `processed_json` and the matching source text files in `raw data`.
+
+Run:
+
+```powershell
+python -m nstg_ai phase1-audit --input-dir nigeria-clinical-guidelines-dataset-main/processed_json --raw-text-dir "nigeria-clinical-guidelines-dataset-main/raw data/NSTG 2022" --output build/phase1_audit_report.json
+```
+
+That report summarizes:
+
+- processed condition count
+- raw text coverage ratio
+- total generated chunks
+- duplicate condition slugs
+- duplicate chunk IDs
+- sparse conditions that may need manual review
+- section coverage across the dataset
+
+## Example output shape
+
+Each generated chunk includes:
+
+- source document metadata
+- chapter and lineage fields
+- condition and demographic metadata
+- contraindications
+- page reference when source data provides it
+- content hash
+- combined chunk text for future embedding

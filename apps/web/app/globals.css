@@ -1,0 +1,47 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f0e8;
+  --surface: #ffffff;
+  --surface-dim: rgba(255,255,255,0.7);
+  --ink: #18211a;
+  --muted: #5a6360;
+  --border: rgba(24,33,26,0.09);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
+  --shadow: 0 4px 24px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.10);
+
+  --emerald: #1a6b5a;
+  --emerald-dim: rgba(26,107,90,0.08);
+  --emerald-border: rgba(26,107,90,0.18);
+
+  --clay: #b84c2a;
+  --clay-dim: rgba(184,76,42,0.08);
+  --clay-border: rgba(184,76,42,0.18);
+
+  --amber: #9c6500;
+  --amber-dim: rgba(156,101,0,0.08);
+  --amber-border: rgba(156,101,0,0.18);
+
+  --danger: #922b1e;
+  --danger-dim: rgba(146,43,30,0.07);
+
+  --radius-sm: 12px;
+  --radius: 18px;
+  --radius-lg: 26px;
+  --radius-full: 999px;
+}
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  font-family: "Georgia", "Times New Roman", serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100dvh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx supabase functions deploy --project-ref dngooesshmbkntipqmxq)",
+      "Bash(npx supabase secrets set --project-ref dngooesshmbkntipqmxq *)",
+      "Bash(curl -s https://dngooesshmbkntipqmxq.supabase.co/functions/v1/api/health)",
+      "Bash(bash tests/phase9_regression.sh)"
+    ]
+  }
+}

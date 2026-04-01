@@ -1,0 +1,50 @@
+{
+  "Village Nurse Persona": {
+    "interaction_id": "8db9f75b43b748f887d78a78ae1ba172",
+    "answer": "I could not find enough guideline evidence to answer safely. Please ask a clinician.",
+    "disposition": "INSUFFICIENT_EVIDENCE",
+    "follow_up_question": null,
+    "triage": "NON_EMERGENCY_CONTINUE",
+    "citations": [],
+    "warnings": [
+      "No matching guideline chunks were found."
+    ],
+    "dosage": null
+  },
+  "Non-English Speaker Persona": {
+    "interaction_id": "0dc1ac3dabc34cc5bdce0d68bcc8b100",
+    "answer": "This may be an emergency.\n\nWhat May Be Happening:\n\n- The child may be too sick to drink or feed safely.\n\nWhat To Do Now:\n\n- Stay with the child and go for urgent in-person care now.\n\n- Do not force food or drink if the child cannot swallow safely.\n\n- If the child stops breathing, collapses, or the shaking does not stop, shout for help immediately.\n\nGet Help Urgently:\n\n- Go to the nearest hospital or urgent clinic now.",
+    "disposition": "EMERGENCY_ESCALATE",
+    "follow_up_question": null,
+    "triage": "EMERGENCY_ESCALATE",
+    "citations": [],
+    "warnings": [
+      "Emergency danger signs detected in the user query."
+    ],
+    "dosage": null
+  },
+  "Medical Doctor Persona": {
+    "interaction_id": "009d48be5d6a4fe6a1d341526c77da8e",
+    "answer": "No sufficiently relevant guideline chunks were found for this clinician query.",
+    "disposition": "INSUFFICIENT_EVIDENCE",
+    "follow_up_question": null,
+    "triage": null,
+    "citations": [],
+    "warnings": [
+      "No matching guideline chunks were found."
+    ],
+    "dosage": null
+  },
+  "Remote Community Member Persona": {
+    "interaction_id": "eb697704a2b24933a0ba4fb76c91867f",
+    "answer": "This may be an emergency.\n\nWhat May Be Happening:\n\n- The child may be having serious trouble breathing.\n\nWhat To Do Now:\n\n- Stay with the child and go for urgent in-person care now.\n\n- Keep the child sitting up or in the easiest position for breathing.\n\n- Loosen tight clothing around the neck and chest.\n\n- If the child stops breathing, collapses, or the shaking does not stop, shout for help immediately.\n\nGet Help Urgently:\n\n- Go to the nearest hospital or urgent clinic now.",
+    "disposition": "EMERGENCY_ESCALATE",
+    "follow_up_question": null,
+    "triage": "EMERGENCY_ESCALATE",
+    "citations": [],
+    "warnings": [
+      "Emergency danger signs detected in the user query."
+    ],
+    "dosage": null
+  }
+}
