@@ -32,8 +32,8 @@ npx supabase secrets set --project-ref dngooesshmbkntipqmxq \
   GROQ_API_KEY="your_groq_key" \
   GROQ_MODEL="llama-3.3-70b-versatile" \
   ENABLE_GROQ_ASSIST="true" \
-  TELEGRAM_BOT_TOKEN="8293127065:AAHuRkts76m72Y4qPottT5L-XDaA3fT9SlM" \
-  TELEGRAM_WEBHOOK_SECRET="nstg_tg_2f84d1b6c7e94a30b5c2f8e1d4a7693c"
+  TELEGRAM_BOT_TOKEN="your_telegram_bot_token" \
+  TELEGRAM_WEBHOOK_SECRET="your_telegram_webhook_secret"
 ```
 
 For WhatsApp (optional):
